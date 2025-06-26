@@ -80,7 +80,7 @@ const ScanUpload: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col items-center justify-center min-h-[400px] w-full pt-10">
+    <div className="space-y-6 pt-6 px-4">
       <motion.div
         className="w-full max-w-2xl p-8 rounded-2xl bg-white/10 dark:bg-slate-800/40 backdrop-blur-lg shadow-xl border border-white/20 dark:border-slate-700/40 mb-8"
         initial={{ opacity: 0, y: 30 }}

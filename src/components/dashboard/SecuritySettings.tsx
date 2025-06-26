@@ -81,7 +81,7 @@ const SecuritySettings: React.FC = () => {
   ];
 
   return (
-    <div className="space-y-8 pt-6 px-4">
+    <div className="space-y-6 pt-6 px-4">
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">

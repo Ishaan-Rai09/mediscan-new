@@ -100,7 +100,7 @@ const DiagnosisResults: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 pt-6 px-4">
+    <div className="space-y-6 pt-6 px-4">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
