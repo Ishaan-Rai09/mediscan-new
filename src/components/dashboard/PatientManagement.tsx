@@ -1,9 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Users, 
   Search, 
-  Filter, 
   Plus, 
   Eye, 
   Edit, 
@@ -13,102 +12,55 @@ import {
   MapPin,
   ChevronDown,
   FileText,
-  Activity
+  Activity,
+  Loader2
 } from 'lucide-react';
+import { getAllPatients } from '../../services/patientService';
+import { Patient } from '../../services/types';
 
-interface Patient {
-  id: string;
-  name: string;
-  age: number;
-  gender: 'Male' | 'Female';
-  email: string;
-  phone: string;
-  address: string;
-  lastVisit: string;
-  totalScans: number;
-  riskLevel: 'low' | 'medium' | 'high';
-  conditions: string[];
-  avatar: string;
+// Extended patient interface with UI-specific properties
+interface ExtendedPatient extends Patient {
+  totalScans?: number;
+  lastVisit?: string;
+  avatar?: string;
 }
 
 const PatientManagement: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterGender, setFilterGender] = useState('all');
   const [filterRisk, setFilterRisk] = useState('all');
-  const [showAddModal, setShowAddModal] = useState(false);
+  useState(false);
+  const [patients, setPatients] = useState<ExtendedPatient[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  useEffect(() => {
+    const fetchPatients = async () => {
+      try {
+        setLoading(true);
+        const patientData = await getAllPatients();
+        
+        // Enhance patient data with UI-specific properties
+        const enhancedPatients = patientData.map(patient => ({
+          ...patient,
+          totalScans: Math.floor(Math.random() * 15) + 1, // Placeholder until we have real scan data
+          lastVisit: new Date(Date.now() - Math.floor(Math.random() * 30) * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          avatar: `https://images.pexels.com/photos/${1000000 + Math.floor(Math.random() * 1000000)}/pexels-photo-${1000000 + Math.floor(Math.random() * 1000000)}.jpeg?auto=compress&cs=tinysrgb&w=150`
+        }));
+        
+        setPatients(enhancedPatients);
+      } catch (err) {
+        console.error('Error fetching patients:', err);
+        setError('Failed to load patient data');
+      } finally {
+        setLoading(false);
+      }
+    };
+    
+    fetchPatients();
+  }, []);
+  
 
-  const patients: Patient[] = [
-    {
-      id: 'PAT-2024-001',
-      name: 'John Smith',
-      age: 45,
-      gender: 'Male',
-      email: 'john.smith@email.com',
-      phone: '+1 (555) 123-4567',
-      address: '123 Main St, New York, NY',
-      lastVisit: '2024-01-15',
-      totalScans: 8,
-      riskLevel: 'medium',
-      conditions: ['Hypertension', 'Diabetes'],
-      avatar: 'https://images.pexels.com/photos/2379004/pexels-photo-2379004.jpeg?auto=compress&cs=tinysrgb&w=150'
-    },
-    {
-      id: 'PAT-2024-002',
-      name: 'Sarah Johnson',
-      age: 38,
-      gender: 'Female',
-      email: 'sarah.johnson@email.com',
-      phone: '+1 (555) 234-5678',
-      address: '456 Oak Ave, Los Angeles, CA',
-      lastVisit: '2024-01-14',
-      totalScans: 12,
-      riskLevel: 'low',
-      conditions: ['Migraine'],
-      avatar: 'https://images.pexels.com/photos/1239291/pexels-photo-1239291.jpeg?auto=compress&cs=tinysrgb&w=150'
-    },
-    {
-      id: 'PAT-2024-003',
-      name: 'Michael Brown',
-      age: 62,
-      gender: 'Male',
-      email: 'michael.brown@email.com',
-      phone: '+1 (555) 345-6789',
-      address: '789 Pine St, Chicago, IL',
-      lastVisit: '2024-01-13',
-      totalScans: 15,
-      riskLevel: 'high',
-      conditions: ['Cardiac Arrhythmia', 'High Cholesterol'],
-      avatar: 'https://images.pexels.com/photos/1222271/pexels-photo-1222271.jpeg?auto=compress&cs=tinysrgb&w=150'
-    },
-    {
-      id: 'PAT-2024-004',
-      name: 'Emily Davis',
-      age: 29,
-      gender: 'Female',
-      email: 'emily.davis@email.com',
-      phone: '+1 (555) 456-7890',
-      address: '321 Elm St, Houston, TX',
-      lastVisit: '2024-01-12',
-      totalScans: 3,
-      riskLevel: 'low',
-      conditions: [],
-      avatar: 'https://images.pexels.com/photos/1181686/pexels-photo-1181686.jpeg?auto=compress&cs=tinysrgb&w=150'
-    },
-    {
-      id: 'PAT-2024-005',
-      name: 'Robert Wilson',
-      age: 55,
-      gender: 'Male',
-      email: 'robert.wilson@email.com',
-      phone: '+1 (555) 567-8901',
-      address: '654 Maple Dr, Phoenix, AZ',
-      lastVisit: '2024-01-11',
-      totalScans: 6,
-      riskLevel: 'medium',
-      conditions: ['Sleep Apnea'],
-      avatar: 'https://images.pexels.com/photos/1043471/pexels-photo-1043471.jpeg?auto=compress&cs=tinysrgb&w=150'
-    }
-  ];
 
   const getRiskColor = (risk: string) => {
     switch (risk) {
@@ -119,7 +71,7 @@ const PatientManagement: React.FC = () => {
     }
   };
 
-  const filteredPatients = patients.filter(patient => {
+  const filteredPatients = loading ? [] : patients.filter(patient => {
     const matchesSearch = patient.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          patient.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          patient.email.toLowerCase().includes(searchTerm.toLowerCase());
@@ -131,6 +83,23 @@ const PatientManagement: React.FC = () => {
 
   return (
     <div className="space-y-6 pt-6 px-4">
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 text-cyan-500 animate-spin" />
+          <span className="ml-3 text-slate-600 dark:text-slate-400">Loading patient data...</span>
+        </div>
+      )}
+      
+      {/* Error State */}
+      {error && !loading && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-red-600 dark:text-red-400">
+          <p className="flex items-center">
+            <Activity className="w-5 h-5 mr-2" />
+            {error}
+          </p>
+        </div>
+      )}
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -142,7 +111,6 @@ const PatientManagement: React.FC = () => {
           </p>
         </div>
         <button 
-          onClick={() => setShowAddModal(true)}
           className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium hover:from-cyan-600 hover:to-blue-700 transition-all duration-200 flex items-center space-x-2"
         >
           <Plus className="w-4 h-4" />
@@ -151,7 +119,8 @@ const PatientManagement: React.FC = () => {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      {!loading && !error && (
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         {[
           { label: 'Total Patients', value: patients.length, icon: Users, color: 'from-cyan-500 to-blue-600' },
           { label: 'High Risk', value: patients.filter(p => p.riskLevel === 'high').length, icon: Activity, color: 'from-red-500 to-pink-600' },
@@ -181,10 +150,12 @@ const PatientManagement: React.FC = () => {
           </motion.div>
         ))}
       </div>
+      )}
 
       {/* Filters */}
-      <div className="bg-white dark:bg-slate-800 p-6 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      {!loading && !error && (
+        <div className="bg-white dark:bg-slate-800 p-6 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -225,11 +196,13 @@ const PatientManagement: React.FC = () => {
             </select>
             <ChevronDown className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
           </div>
-        </div>
+          </div>
       </div>
+      )}
 
       {/* Patients Grid */}
-      <div className="grid gap-6">
+      {!loading && !error && (
+        <div className="grid gap-6">
         {filteredPatients.map((patient, index) => (
           <motion.div
             key={patient.id}
@@ -319,10 +292,11 @@ const PatientManagement: React.FC = () => {
             </div>
           </motion.div>
         ))}
-      </div>
+        </div>
+      )}
 
       {/* Empty State */}
-      {filteredPatients.length === 0 && (
+      {!loading && !error && filteredPatients.length === 0 && (
         <motion.div
           className="text-center py-12"
           initial={{ opacity: 0, y: 20 }}

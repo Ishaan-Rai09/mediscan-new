@@ -1,83 +1,73 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  AlertTriangle, 
-  CheckCircle, 
   Brain, 
   Heart, 
   Activity, 
-  FileText,
+  FileImage, 
+  AlertTriangle, 
+  CheckCircle, 
   Download,
   Eye,
+  Loader2,
+  MapPin,
+  Info,
   Zap,
-  Info
+  FileText
 } from 'lucide-react';
+import { getAllScans, getScanById, ScanResult } from '../../services/scanService';
+import { createReportFromScan } from '../../services/reportService';
 
-interface Anomaly {
-  id: string;
-  type: 'high' | 'medium' | 'low';
-  title: string;
-  description: string;
-  location: string;
-  confidence: number;
-  coordinates: { x: number; y: number };
-}
+// Use the ScanResult interface from scanService
+// No need to redefine interfaces
 
 const DiagnosisResults: React.FC = () => {
+  const { scanId } = useParams<{ scanId: string }>();
+  const navigate = useNavigate();
   const [selectedScan, setSelectedScan] = useState(0);
   const [showHeatmap, setShowHeatmap] = useState(true);
+  const [scanResults, setScanResults] = useState<ScanResult[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const scanResults = [
-    {
-      id: 1,
-      type: 'Brain MRI',
-      patientId: 'PAT-2024-001',
-      scanDate: '2024-01-15',
-      image: 'https://images.pexels.com/photos/7659564/pexels-photo-7659564.jpeg?auto=compress&cs=tinysrgb&w=600',
-      anomalies: [
-        {
-          id: '1',
-          type: 'high' as const,
-          title: 'Suspected Lesion',
-          description: 'Small hyperintense lesion detected in the frontal lobe',
-          location: 'Frontal Lobe (Right)',
-          confidence: 94.2,
-          coordinates: { x: 45, y: 30 }
-        },
-        {
-          id: '2',
-          type: 'medium' as const,
-          title: 'White Matter Changes',
-          description: 'Age-related white matter hyperintensities observed',
-          location: 'Periventricular Region',
-          confidence: 78.5,
-          coordinates: { x: 60, y: 55 }
+  useEffect(() => {
+    const fetchScanData = async () => {
+      try {
+        setLoading(true);
+        if (scanId) {
+          // If a specific scan ID is provided in the URL
+          const scan = await getScanById(scanId);
+          if (scan) {
+            setScanResults([scan]);
+          } else {
+            setError('Scan not found');
+          }
+        } else {
+          // Get all scans and filter for those with analysis results
+          const { getAllScans } = await import('../../services/scanService');
+          const allScans = await getAllScans();
+          const scansWithAnalysis = allScans.filter(scan => 
+            scan.anomalies && scan.anomalies.length > 0
+          );
+          
+          if (scansWithAnalysis.length > 0) {
+            setScanResults(scansWithAnalysis);
+          } else {
+            setError('No analyzed scans found');
+          }
         }
-      ],
-      overallRisk: 'Medium',
-      analysisTime: '12.3s'
-    },
-    {
-      id: 2,
-      type: 'Cardiac CT',
-      patientId: 'PAT-2024-002',
-      scanDate: '2024-01-14',
-      image: 'https://images.pexels.com/photos/7659568/pexels-photo-7659568.jpeg?auto=compress&cs=tinysrgb&w=600',
-      anomalies: [
-        {
-          id: '3',
-          type: 'low' as const,
-          title: 'Mild Calcification',
-          description: 'Minor coronary artery calcification detected',
-          location: 'LAD Coronary Artery',
-          confidence: 85.7,
-          coordinates: { x: 50, y: 40 }
-        }
-      ],
-      overallRisk: 'Low',
-      analysisTime: '8.7s'
-    }
-  ];
+      } catch (err) {
+        console.error('Error fetching scan data:', err);
+        setError('Failed to load scan data');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchScanData();
+  }, [scanId]);
 
   const currentScan = scanResults[selectedScan];
 
@@ -99,6 +89,18 @@ const DiagnosisResults: React.FC = () => {
     }
   };
 
+  const getOverallRisk = (scan: ScanResult): string => {
+    if (scan.anomalies.length === 0) return 'Low';
+    
+    const highRiskCount = scan.anomalies.filter(a => a.type === 'high').length;
+    const mediumRiskCount = scan.anomalies.filter(a => a.type === 'medium').length;
+    
+    if (highRiskCount > 0) return 'High';
+    if (mediumRiskCount > 1) return 'High';
+    if (mediumRiskCount > 0) return 'Medium';
+    return 'Low';
+  };
+
   return (
     <div className="space-y-6 pt-6 px-4">
       {/* Header */}
@@ -112,48 +114,83 @@ const DiagnosisResults: React.FC = () => {
           </p>
         </div>
         <div className="flex items-center space-x-3">
-          <button className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium hover:from-cyan-600 hover:to-blue-700 transition-all duration-200 flex items-center space-x-2">
+          <button 
+            className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium hover:from-cyan-600 hover:to-blue-700 transition-all duration-200 flex items-center space-x-2"
+            onClick={() => {
+              if (currentScan?.reportUrl) {
+                window.open(currentScan.reportUrl, '_blank');
+              }
+            }}
+            disabled={!currentScan?.reportUrl}
+          >
             <Download className="w-4 h-4" />
-            <span>Export Report</span>
+            <span>{currentScan?.reportUrl ? 'Download Report' : 'Export Report'}</span>
           </button>
         </div>
       </div>
 
-      {/* Scan Selector */}
-      <div className="flex space-x-4 overflow-x-auto pb-2">
-        {scanResults.map((scan, index) => (
-          <motion.button
-            key={scan.id}
-            onClick={() => setSelectedScan(index)}
-            className={`
-              flex-shrink-0 p-4 rounded-lg border-2 transition-all duration-200 min-w-[200px]
-              ${selectedScan === index 
-                ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20' 
-                : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
-              }
-            `}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 text-cyan-500 animate-spin" />
+          <span className="ml-3 text-slate-600 dark:text-slate-400">Loading scan results...</span>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && !loading && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-red-600 dark:text-red-400">
+          <p className="flex items-center">
+            <AlertTriangle className="w-5 h-5 mr-2" />
+            {error}
+          </p>
+          <button 
+            className="mt-3 text-sm text-cyan-600 dark:text-cyan-400 hover:underline"
+            onClick={() => navigate('/dashboard/upload')}
           >
-            <div className="flex items-center space-x-3 mb-2">
-              <div className="w-8 h-8 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
-                {scan.type === 'Brain MRI' ? <Brain className="w-4 h-4 text-white" /> : <Heart className="w-4 h-4 text-white" />}
+            Upload a new scan
+          </button>
+        </div>
+      )}
+
+      {/* Scan Selector */}
+      {!loading && !error && scanResults.length > 0 && (
+        <div className="flex space-x-4 overflow-x-auto pb-2">
+          {scanResults.map((scan, index) => (
+            <motion.button
+              key={scan.id}
+              onClick={() => setSelectedScan(index)}
+              className={`
+                flex-shrink-0 p-4 rounded-lg border-2 transition-all duration-200 min-w-[200px]
+                ${selectedScan === index 
+                  ? 'border-cyan-500 bg-cyan-50 dark:bg-cyan-900/20' 
+                  : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
+                }
+              `}
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              <div className="flex items-center space-x-3 mb-2">
+                <div className="w-8 h-8 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
+                  {scan.type === 'Brain MRI' ? <Brain className="w-4 h-4 text-white" /> : <Heart className="w-4 h-4 text-white" />}
+                </div>
+                <span className="font-medium text-slate-900 dark:text-white">{scan.type}</span>
               </div>
-              <span className="font-medium text-slate-900 dark:text-white">{scan.type}</span>
-            </div>
-            <div className="text-left space-y-1">
-              <p className="text-sm text-slate-500 dark:text-slate-400">Patient: {scan.patientId}</p>
-              <p className="text-sm text-slate-500 dark:text-slate-400">Date: {scan.scanDate}</p>
-              <div className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getRiskColor(scan.overallRisk)}`}>
-                {scan.overallRisk} Risk
+              <div className="text-left space-y-1">
+                <p className="text-sm text-slate-500 dark:text-slate-400">Patient: {scan.patientId}</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400">Date: {new Date(scan.scanDate).toLocaleDateString()}</p>
+                <div className={`inline-flex px-2 py-1 rounded-full text-xs font-medium ${getRiskColor(getOverallRisk(scan))}`}>
+                  {getOverallRisk(scan)} Risk
+                </div>
               </div>
-            </div>
-          </motion.button>
-        ))}
-      </div>
+            </motion.button>
+          ))}
+        </div>
+      )}
 
       {/* Main Results */}
-      <div className="grid lg:grid-cols-2 gap-8">
+      {!loading && !error && currentScan && (
+        <div className="grid lg:grid-cols-2 gap-8">
         {/* Scan Image */}
         <motion.div 
           className="space-y-4"
@@ -218,7 +255,7 @@ const DiagnosisResults: React.FC = () => {
             <div className="absolute top-4 left-4 bg-black/50 backdrop-blur-sm rounded-lg p-3 text-white">
               <div className="flex items-center space-x-2 mb-1">
                 <Zap className="w-4 h-4" />
-                <span className="text-sm font-medium">Analysis Time: {currentScan.analysisTime}</span>
+                <span className="text-sm font-medium">Analysis Completed</span>
               </div>
               <p className="text-xs opacity-90">
                 {currentScan.anomalies.length} anomal{currentScan.anomalies.length !== 1 ? 'ies' : 'y'} detected
@@ -282,8 +319,8 @@ const DiagnosisResults: React.FC = () => {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-slate-600 dark:text-slate-400">Risk Level:</span>
-                <div className={`px-3 py-1 rounded-full text-sm font-medium ${getRiskColor(currentScan.overallRisk)}`}>
-                  {currentScan.overallRisk}
+                <div className={`px-3 py-1 rounded-full text-sm font-medium ${getRiskColor(getOverallRisk(currentScan))}`}>
+                  {getOverallRisk(currentScan)}
                 </div>
               </div>
               <div className="flex items-center justify-between">
@@ -303,16 +340,93 @@ const DiagnosisResults: React.FC = () => {
 
           {/* Action Buttons */}
           <div className="flex space-x-3">
-            <button className="flex-1 px-4 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium hover:from-cyan-600 hover:to-blue-700 transition-all duration-200 flex items-center justify-center space-x-2">
-              <FileText className="w-4 h-4" />
-              <span>Generate PDF Report</span>
+            <button 
+              className="flex-1 px-4 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium hover:from-cyan-600 hover:to-blue-700 transition-all duration-200 flex items-center justify-center space-x-2"
+              onClick={async () => {
+                if (currentScan.reportUrl) {
+                  window.open(currentScan.reportUrl, '_blank');
+                  return;
+                }
+                
+                try {
+                  setGenerating(true);
+                  
+                  // Create a simple PDF report (placeholder)
+                  const reportContent = `
+                    Medical Scan Report
+                    Patient: ${currentScan.patientId}
+                    Scan Type: ${currentScan.type}
+                    Date: ${new Date(currentScan.scanDate).toLocaleDateString()}
+                    Risk Level: ${getOverallRisk(currentScan)}
+                    Anomalies: ${currentScan.anomalies.length}
+                    Status: ${currentScan.status}
+                  `;
+                  
+                  const pdfBlob = new Blob([reportContent], { type: 'application/pdf' });
+                  
+                  const reportData = {
+                    doctor: 'AI System',
+                    findings: `${currentScan.anomalies.length} anomalies detected with ${getOverallRisk(currentScan).toLowerCase()} risk level`,
+                    recommendations: 'Please consult with a medical professional for detailed analysis',
+                    patientName: currentScan.patientId
+                  };
+                  
+                  // Generate and store the report
+                  const report = await createReportFromScan(currentScan, reportData, pdfBlob);
+                  
+                  // Update the scan with the report URL
+                  if (report) {
+                    const reportUrl = report.pdfIpfsHash ? `https://gateway.pinata.cloud/ipfs/${report.pdfIpfsHash}` : '#';
+                    const updatedScan = {...currentScan, reportUrl, reportGenerated: true};
+                    await updateScanWithAnalysis(updatedScan.id, updatedScan);
+                    
+                    // Update the local state
+                    setScanResults(prev => {
+                      const newResults = [...prev];
+                      newResults[selectedScan] = updatedScan;
+                      return newResults;
+                    });
+                    
+                    // Open the report
+                    if (reportUrl !== '#') {
+                      window.open(reportUrl, '_blank');
+                    }
+                  }
+                } catch (err) {
+                  console.error('Error generating report:', err);
+                  alert('Failed to generate report. Please try again.');
+                } finally {
+                  setGenerating(false);
+                }
+              }}
+              disabled={generating}
+            >
+              {generating ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Generating...</span>
+                </>
+              ) : (
+                <>
+                  <FileText className="w-4 h-4" />
+                  <span>{currentScan.reportUrl ? 'View PDF Report' : 'Generate PDF Report'}</span>
+                </>
+              )}
             </button>
-            <button className="px-4 py-3 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all duration-200">
+            <button 
+              className="px-4 py-3 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-all duration-200"
+              onClick={() => {
+                const url = `${window.location.origin}/dashboard/results/${currentScan.id}`;
+                navigator.clipboard.writeText(url);
+                alert('Link copied to clipboard!');
+              }}
+            >
               Share Results
             </button>
           </div>
         </motion.div>
-      </div>
+        </div>
+      )}
     </div>
   );
 };

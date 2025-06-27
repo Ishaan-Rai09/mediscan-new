@@ -8,18 +8,15 @@ import {
   Activity, 
   Zap, 
   Shield, 
-  Clock, 
   Award, 
   Users,
   ArrowRight,
   Play,
-  CheckCircle,
   Star,
   Menu,
   X
 } from 'lucide-react';
 import { useState } from 'react';
-import ThemeToggle from './ThemeToggle';
 
 const LandingPage: React.FC = () => {
   const navigate = useNavigate();
@@ -99,7 +96,14 @@ const LandingPage: React.FC = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 dark:from-slate-950 dark:via-blue-950 dark:to-indigo-950 text-white overflow-hidden">
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900 text-white overflow-hidden relative">
+      {/* Luxurious background patterns */}
+      <div className="absolute inset-0 opacity-30">
+        <div className="w-full h-full" style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
+        }}></div>
+      </div>
+      <div className="absolute inset-0 bg-gradient-to-t from-black/20 via-transparent to-transparent"></div>
       {/* Navigation */}
       <nav className="relative z-50 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -123,7 +127,6 @@ const LandingPage: React.FC = () => {
             <a href="#how-it-works" className="text-slate-300 hover:text-white transition-colors">How It Works</a>
             <a href="#testimonials" className="text-slate-300 hover:text-white transition-colors">Reviews</a>
             <a href="#contact" className="text-slate-300 hover:text-white transition-colors">Contact</a>
-            <ThemeToggle />
             
             {/* Authentication Buttons */}
             <SignedOut>
@@ -182,8 +185,7 @@ const LandingPage: React.FC = () => {
               <a href="#how-it-works" className="block text-slate-300 hover:text-white transition-colors">How It Works</a>
               <a href="#testimonials" className="block text-slate-300 hover:text-white transition-colors">Reviews</a>
               <a href="#contact" className="block text-slate-300 hover:text-white transition-colors">Contact</a>
-              <div className="flex items-center justify-between pt-4 border-t border-slate-700">
-                <ThemeToggle />
+              <div className="flex items-center justify-end pt-4 border-t border-slate-700">
                 <div className="space-x-4">
                   <SignedOut>
                     <SignInButton mode="modal">

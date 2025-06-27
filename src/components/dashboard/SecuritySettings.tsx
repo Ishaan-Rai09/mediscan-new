@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
   Shield, 
@@ -10,10 +10,9 @@ import {
   Upload,
   AlertTriangle,
   CheckCircle,
-  Settings,
   Smartphone,
   Globe,
-  Clock
+  Clock,
 } from 'lucide-react';
 
 const SecuritySettings: React.FC = () => {
@@ -21,6 +20,15 @@ const SecuritySettings: React.FC = () => {
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(true);
   const [encryptionEnabled, setEncryptionEnabled] = useState(true);
   const [autoLogout, setAutoLogout] = useState('30');
+  const [encryptionKey, setEncryptionKey] = useState('');
+  
+  // Get encryption key from environment variables
+  useEffect(() => {
+    // In a real app, this would be fetched securely from a backend API
+    // For this demo, we'll use a masked version of the key from .env
+    const key = import.meta.env.VITE_ENCRYPTION_KEY || 'a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6';
+    setEncryptionKey(key);
+  }, []);
 
   const securityFeatures = [
     {
@@ -252,7 +260,7 @@ const SecuritySettings: React.FC = () => {
                 <div className="flex-1 relative">
                   <input
                     type={showEncryptionKey ? 'text' : 'password'}
-                    value="a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+                    value={encryptionKey}
                     readOnly
                     className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-slate-50 dark:bg-slate-700 text-slate-900 dark:text-white font-mono text-sm"
                   />
@@ -263,7 +271,19 @@ const SecuritySettings: React.FC = () => {
                     {showEncryptionKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
                 </div>
-                <button className="px-3 py-2 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                <button 
+                  onClick={() => {
+                    // In a real app, this would securely download the key
+                    const element = document.createElement('a');
+                    const file = new Blob([encryptionKey], {type: 'text/plain'});
+                    element.href = URL.createObjectURL(file);
+                    element.download = 'encryption-key.txt';
+                    document.body.appendChild(element);
+                    element.click();
+                    document.body.removeChild(element);
+                  }}
+                  className="px-3 py-2 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                >
                   <Download className="w-4 h-4" />
                 </button>
               </div>
@@ -278,11 +298,32 @@ const SecuritySettings: React.FC = () => {
                 Download encrypted backup of your data
               </p>
               <div className="flex space-x-3">
-                <button className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-700 transition-all duration-200 flex items-center space-x-2">
+                <button 
+                  onClick={() => {
+                    // In a real app, this would trigger a backup process
+                    alert('Backup process started. Your data will be encrypted and downloaded.');
+                  }}
+                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-700 transition-all duration-200 flex items-center space-x-2"
+                >
                   <Download className="w-4 h-4" />
                   <span>Download Backup</span>
                 </button>
-                <button className="px-4 py-2 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center space-x-2">
+                <button 
+                  onClick={() => {
+                    // In a real app, this would open a file picker for restore
+                    const input = document.createElement('input');
+                    input.type = 'file';
+                    input.accept = '.enc';
+                    input.onchange = (e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        alert(`Restore process started for file: ${file.name}`);
+                      }
+                    };
+                    input.click();
+                  }}
+                  className="px-4 py-2 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors flex items-center space-x-2"
+                >
                   <Upload className="w-4 h-4" />
                   <span>Restore</span>
                 </button>

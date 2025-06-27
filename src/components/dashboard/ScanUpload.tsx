@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useDropzone } from 'react-dropzone';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
@@ -9,21 +9,27 @@ import {
   FileImage, 
   X,
   CheckCircle,
-  AlertCircle,
-  Loader
+  Loader,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { createScan, ScanType } from '../../services/scanService';
+import { getAllPatients, Patient } from '../../services/patientService';
 
 interface UploadedFile {
   file: File;
   preview: string;
-  scanType: 'brain' | 'heart' | 'lungs' | 'liver';
+  scanType: ScanType;
   id: string;
+  patientId: string;
 }
 
 const ScanUpload: React.FC = () => {
+  const navigate = useNavigate();
   const [uploadedFiles, setUploadedFiles] = useState<UploadedFile[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisComplete, setAnalysisComplete] = useState(false);
+  const [patients, setPatients] = useState<Patient[]>([]);
+  const [selectedPatientId, setSelectedPatientId] = useState<string>('');
 
   const scanTypes = [
     { id: 'brain', name: 'Brain MRI', icon: Brain, color: 'from-purple-500 to-pink-600' },
@@ -31,6 +37,19 @@ const ScanUpload: React.FC = () => {
     { id: 'lungs', name: 'Lung CT', icon: Activity, color: 'from-cyan-500 to-blue-600' },
     { id: 'liver', name: 'Liver MRI', icon: FileImage, color: 'from-green-500 to-emerald-600' }
   ];
+
+  // Load patients on component mount
+  useEffect(() => {
+    const loadPatients = async () => {
+      const patientData = await getAllPatients();
+      setPatients(patientData);
+      if (patientData.length > 0) {
+        setSelectedPatientId(patientData[0].id);
+      }
+    };
+    
+    loadPatients();
+  }, []);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     acceptedFiles.forEach(file => {
@@ -40,15 +59,16 @@ const ScanUpload: React.FC = () => {
           file,
           preview: reader.result as string,
           scanType: 'brain', // Default selection
-          id: Math.random().toString(36).substr(2, 9)
+          id: Math.random().toString(36).substr(2, 9),
+          patientId: selectedPatientId
         };
         setUploadedFiles(prev => [...prev, newFile]);
       };
       reader.readAsDataURL(file);
     });
-  }, []);
+  }, [selectedPatientId]);
 
-  useDropzone({
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
       'image/*': ['.jpeg', '.jpg', '.png', '.dicom', '.dcm']
@@ -60,10 +80,18 @@ const ScanUpload: React.FC = () => {
     setUploadedFiles(prev => prev.filter(file => file.id !== id));
   };
 
-  const updateScanType = (id: string, scanType: 'brain' | 'heart' | 'lungs' | 'liver') => {
+  const updateScanType = (id: string, scanType: ScanType) => {
     setUploadedFiles(prev => 
       prev.map(file => 
         file.id === id ? { ...file, scanType } : file
+      )
+    );
+  };
+  
+  const updatePatientId = (id: string, patientId: string) => {
+    setUploadedFiles(prev => 
+      prev.map(file => 
+        file.id === id ? { ...file, patientId } : file
       )
     );
   };
@@ -72,15 +100,37 @@ const ScanUpload: React.FC = () => {
     setIsAnalyzing(true);
     setAnalysisComplete(false);
     
-    // Simulate AI analysis
-    await new Promise(resolve => setTimeout(resolve, 3000));
-    
-    setIsAnalyzing(false);
-    setAnalysisComplete(true);
+    try {
+      // Process each file
+      const scanPromises = uploadedFiles.map(async (fileData) => {
+        return await createScan(
+          fileData.file,
+          fileData.patientId,
+          fileData.scanType
+        );
+      });
+      
+      // Wait for all uploads to complete
+      const results = await Promise.all(scanPromises);
+      
+      // Check if all uploads were successful
+      const allSuccessful = results.every(result => result !== null);
+      
+      if (allSuccessful) {
+        setIsAnalyzing(false);
+        setAnalysisComplete(true);
+      } else {
+        throw new Error('Some scans failed to upload');
+      }
+    } catch (error) {
+      console.error('Error during scan analysis:', error);
+      setIsAnalyzing(false);
+      // Handle error state here
+    }
   };
 
   return (
-    <div className="space-y-6 pt-6 px-4">
+    <div className="space-y-6">
       <motion.div
         className="w-full max-w-2xl p-8 rounded-2xl bg-white/10 dark:bg-slate-800/40 backdrop-blur-lg shadow-xl border border-white/20 dark:border-slate-700/40 mb-8"
         initial={{ opacity: 0, y: 30 }}
@@ -92,9 +142,21 @@ const ScanUpload: React.FC = () => {
           Upload Medical Scans
         </h2>
         <p className="text-slate-300 mb-6">Upload MRI, CT, or X-ray images for AI-powered analysis</p>
-        <div className="flex flex-col items-center justify-center border-2 border-dashed border-cyan-400/40 rounded-xl p-8 bg-cyan-900/10 hover:bg-cyan-900/20 transition-all duration-300">
-          <Upload className="w-12 h-12 text-cyan-400 mb-4 animate-pulse" />
-          <span className="text-lg text-white font-medium mb-2">Drag & drop medical images</span>
+        <div 
+          {...getRootProps()}
+          className={`flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-8 transition-all duration-300 cursor-pointer ${
+            isDragActive 
+              ? 'border-cyan-300 bg-cyan-900/30 scale-105' 
+              : 'border-cyan-400/40 bg-cyan-900/10 hover:bg-cyan-900/20'
+          }`}
+        >
+          <input {...getInputProps()} />
+          <Upload className={`w-12 h-12 text-cyan-400 mb-4 ${
+            isDragActive ? 'animate-bounce' : 'animate-pulse'
+          }`} />
+          <span className="text-lg text-white font-medium mb-2">
+            {isDragActive ? 'Drop files here...' : 'Drag & drop medical images'}
+          </span>
           <span className="text-cyan-300 mb-2">or <span className="underline cursor-pointer">browse files</span></span>
           <span className="text-xs text-slate-400">Supports DICOM, JPEG, PNG formats • Max 10MB per file</span>
         </div>
@@ -142,15 +204,28 @@ const ScanUpload: React.FC = () => {
                   </div>
 
                   {/* Scan Type Selector */}
-                  <div className="flex items-center space-x-2">
+                  <div className="flex flex-col space-y-2">
                     <select
                       value={file.scanType}
-                      onChange={(e) => updateScanType(file.id, e.target.value as any)}
+                      onChange={(e) => updateScanType(file.id, e.target.value as ScanType)}
                       className="px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm font-medium text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
                     >
                       {scanTypes.map(type => (
                         <option key={type.id} value={type.id}>
                           {type.name}
+                        </option>
+                      ))}
+                    </select>
+                    
+                    {/* Patient Selector */}
+                    <select
+                      value={file.patientId}
+                      onChange={(e) => updatePatientId(file.id, e.target.value)}
+                      className="px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm font-medium text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    >
+                      {patients.map(patient => (
+                        <option key={patient.id} value={patient.id}>
+                          {patient.name}
                         </option>
                       ))}
                     </select>
@@ -261,12 +336,18 @@ const ScanUpload: React.FC = () => {
                   Your medical scans have been successfully analyzed. View detailed results and generate reports.
                 </p>
                 <div className="flex space-x-3">
-                  <button className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-700 transition-all duration-200">
-                    View Results
-                  </button>
-                  <button className="px-4 py-2 border border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 rounded-lg font-medium hover:bg-green-50 dark:hover:bg-green-900/20 transition-all duration-200">
-                    Generate Report
-                  </button>
+                  <button 
+                  onClick={() => navigate('/dashboard/results')} 
+                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-700 transition-all duration-200"
+                >
+                  View Results
+                </button>
+                <button 
+                  onClick={() => navigate('/dashboard/reports')} 
+                  className="px-4 py-2 border border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 rounded-lg font-medium hover:bg-green-50 dark:hover:bg-green-900/20 transition-all duration-200"
+                >
+                  Generate Report
+                </button>
                 </div>
               </div>
             </div>

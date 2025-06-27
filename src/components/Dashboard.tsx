@@ -1,35 +1,76 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { UserButton, useUser } from '@clerk/clerk-react';
-import { motion } from 'framer-motion';
+import { useUser } from '@clerk/clerk-react';
 import { 
   Upload, 
   Brain, 
   FileText, 
   History, 
-  Menu,
   X,
   Activity,
-  Zap,
   BarChart3,
   Users,
   Shield
 } from 'lucide-react';
 import { useTheme } from '../contexts/ThemeContext';
-import ThemeToggle from './ThemeToggle';
 import ScanUpload from './dashboard/ScanUpload';
 import PastReports from './dashboard/PastReports';
 import DiagnosisResults from './dashboard/DiagnosisResults';
 import Analytics from './dashboard/Analytics';
 import PatientManagement from './dashboard/PatientManagement';
 import SecuritySettings from './dashboard/SecuritySettings';
+import { getAnalyticsData } from '../services/analyticsService';
+import { getAllPatients } from '../services/patientService';
+import { getAllReports } from '../services/reportService';
 
 const Dashboard: React.FC = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { theme } = useTheme();
+  const [stats, setStats] = useState({
+    totalScans: 0,
+    reports: 0,
+    patients: 0,
+    anomalies: 0
+  });
+  const [loading, setLoading] = useState(true);
+  useTheme();
   const navigate = useNavigate();
   const location = useLocation();
   const { user } = useUser();
+
+  // Fetch real-time dashboard stats
+  useEffect(() => {
+    const fetchDashboardStats = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch analytics data
+        const analyticsData = await getAnalyticsData('7d');
+        
+        // Fetch patients
+        const patients = await getAllPatients();
+        
+        // Fetch reports
+        const reports = await getAllReports();
+        
+        // Calculate stats from the fetched data
+        const totalScansValue = analyticsData?.stats?.find(s => s.title === 'Total Scans')?.value || '0';
+        const anomaliesValue = analyticsData?.stats?.find(s => s.title === 'Anomalies Detected')?.value || '0';
+        
+        setStats({
+          totalScans: parseInt(totalScansValue),
+          reports: reports.length,
+          patients: patients.length,
+          anomalies: parseInt(anomaliesValue)
+        });
+      } catch (error) {
+        console.error('Error fetching dashboard stats:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchDashboardStats();
+  }, []);
 
   const navigationGroups = [
     {
@@ -64,7 +105,7 @@ const Dashboard: React.FC = () => {
     if (exact) {
       return location.pathname === href;
     }
-    return location.pathname.startsWith(href);
+    return location.pathname === href || location.pathname.startsWith(href + '/');
   };
 
   return (
@@ -141,14 +182,13 @@ const Dashboard: React.FC = () => {
       </div>
 
       {/* Main content */}
-      <div className="flex-1 relative flex flex-col">
-        <div className="mx-auto max-w-7xl flex-1">
-
-          <div className="relative z-10">
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-auto">
+          <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
 
             {location.pathname === '/dashboard' && (
               <>
-                <div className="mb-4">
+                <div className="mb-6">
                   <div className="rounded-2xl bg-gradient-to-r from-cyan-500/80 to-blue-600/80 p-6 flex items-center justify-between shadow-lg">
                     <div>
                       <h2 className="text-2xl font-bold text-white mb-1">Welcome{user?.firstName ? `, ${user.firstName}` : ''}!</h2>
@@ -156,32 +196,40 @@ const Dashboard: React.FC = () => {
                     </div>
                   </div>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
                   <div className="rounded-xl bg-white/80 dark:bg-slate-800/80 p-6 flex items-center shadow-md border border-cyan-100 dark:border-slate-700">
                     <BarChart3 className="w-8 h-8 text-cyan-500 mr-4" />
                     <div>
-                      <div className="text-2xl font-bold text-slate-900 dark:text-white">1,247</div>
+                      <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                        {loading ? '...' : stats.totalScans.toLocaleString()}
+                      </div>
                       <div className="text-sm text-slate-500 dark:text-slate-300">Total Scans</div>
                     </div>
                   </div>
                   <div className="rounded-xl bg-white/80 dark:bg-slate-800/80 p-6 flex items-center shadow-md border border-cyan-100 dark:border-slate-700">
                     <FileText className="w-8 h-8 text-blue-500 mr-4" />
                     <div>
-                      <div className="text-2xl font-bold text-slate-900 dark:text-white">89</div>
+                      <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                        {loading ? '...' : stats.reports.toLocaleString()}
+                      </div>
                       <div className="text-sm text-slate-500 dark:text-slate-300">Reports</div>
                     </div>
                   </div>
                   <div className="rounded-xl bg-white/80 dark:bg-slate-800/80 p-6 flex items-center shadow-md border border-cyan-100 dark:border-slate-700">
                     <Users className="w-8 h-8 text-emerald-500 mr-4" />
                     <div>
-                      <div className="text-2xl font-bold text-slate-900 dark:text-white">456</div>
+                      <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                        {loading ? '...' : stats.patients.toLocaleString()}
+                      </div>
                       <div className="text-sm text-slate-500 dark:text-slate-300">Patients</div>
                     </div>
                   </div>
                   <div className="rounded-xl bg-white/80 dark:bg-slate-800/80 p-6 flex items-center shadow-md border border-cyan-100 dark:border-slate-700">
                     <Activity className="w-8 h-8 text-pink-500 mr-4" />
                     <div>
-                      <div className="text-2xl font-bold text-slate-900 dark:text-white">23</div>
+                      <div className="text-2xl font-bold text-slate-900 dark:text-white">
+                        {loading ? '...' : stats.anomalies.toLocaleString()}
+                      </div>
                       <div className="text-sm text-slate-500 dark:text-slate-300">Anomalies Detected</div>
                     </div>
                   </div>
@@ -199,8 +247,6 @@ const Dashboard: React.FC = () => {
             </Routes>
           </div>
         </div>
-        <main>
-        </main>
       </div>
     </div>
   );

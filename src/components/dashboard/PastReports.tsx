@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { 
   Search, 
-  Filter, 
   Download, 
   Eye, 
   Calendar,
@@ -13,90 +13,41 @@ import {
   ChevronDown,
   AlertTriangle,
   CheckCircle,
-  Info
+  Info,
+  Loader2
 } from 'lucide-react';
+import { getAllReports, downloadReportPdf, Report } from '../../services/reportService';
+import { ScanType } from '../../services/types';
 
-interface Report {
-  id: string;
-  patientId: string;
-  patientName: string;
-  scanType: 'brain' | 'heart' | 'lungs' | 'liver';
-  date: string;
-  riskLevel: 'high' | 'medium' | 'low';
-  anomaliesCount: number;
-  status: 'completed' | 'pending' | 'reviewed';
-  reportSize: string;
-  thumbnail: string;
-}
+// Using Report interface from reportService
 
 const PastReports: React.FC = () => {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState('all');
   const [filterRisk, setFilterRisk] = useState('all');
   const [sortBy, setSortBy] = useState('date');
+  const [reports, setReports] = useState<Report[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [downloadingReports, setDownloadingReports] = useState<Set<string>>(new Set());
 
-  const reports: Report[] = [
-    {
-      id: 'RPT-2024-001',
-      patientId: 'PAT-2024-001',
-      patientName: 'John Smith',
-      scanType: 'brain',
-      date: '2024-01-15',
-      riskLevel: 'medium',
-      anomaliesCount: 2,
-      status: 'completed',
-      reportSize: '2.3 MB',
-      thumbnail: 'https://images.pexels.com/photos/7659564/pexels-photo-7659564.jpeg?auto=compress&cs=tinysrgb&w=300'
-    },
-    {
-      id: 'RPT-2024-002',
-      patientId: 'PAT-2024-002',
-      patientName: 'Sarah Johnson',
-      scanType: 'heart',
-      date: '2024-01-14',
-      riskLevel: 'low',
-      anomaliesCount: 1,
-      status: 'completed',
-      reportSize: '1.8 MB',
-      thumbnail: 'https://images.pexels.com/photos/7659568/pexels-photo-7659568.jpeg?auto=compress&cs=tinysrgb&w=300'
-    },
-    {
-      id: 'RPT-2024-003',
-      patientId: 'PAT-2024-003',
-      patientName: 'Michael Brown',
-      scanType: 'lungs',
-      date: '2024-01-13',
-      riskLevel: 'high',
-      anomaliesCount: 3,
-      status: 'reviewed',
-      reportSize: '3.1 MB',
-      thumbnail: 'https://images.pexels.com/photos/7659566/pexels-photo-7659566.jpeg?auto=compress&cs=tinysrgb&w=300'
-    },
-    {
-      id: 'RPT-2024-004',
-      patientId: 'PAT-2024-004',
-      patientName: 'Emily Davis',
-      scanType: 'liver',
-      date: '2024-01-12',
-      riskLevel: 'low',
-      anomaliesCount: 0,
-      status: 'completed',
-      reportSize: '1.5 MB',
-      thumbnail: 'https://images.pexels.com/photos/7659567/pexels-photo-7659567.jpeg?auto=compress&cs=tinysrgb&w=300'
-    },
-    {
-      id: 'RPT-2024-005',
-      patientId: 'PAT-2024-005',
-      patientName: 'Robert Wilson',
-      scanType: 'brain',
-      date: '2024-01-11',
-      riskLevel: 'medium',
-      anomaliesCount: 1,
-      status: 'pending',
-      reportSize: '2.0 MB',
-      thumbnail: 'https://images.pexels.com/photos/7659565/pexels-photo-7659565.jpeg?auto=compress&cs=tinysrgb&w=300'
-    }
-  ];
+  useEffect(() => {
+    const fetchReports = async () => {
+      try {
+        setLoading(true);
+        const fetchedReports = await getAllReports();
+        setReports(fetchedReports);
+      } catch (err) {
+        console.error('Error fetching reports:', err);
+        setError('Failed to load reports');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchReports();
+  }, []);
 
   const getScanIcon = (type: string) => {
     switch (type) {
@@ -136,16 +87,56 @@ const PastReports: React.FC = () => {
   };
 
   const filteredReports = reports.filter(report => {
-    const matchesSearch = report.patientName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         report.patientId.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = 
+      (report.patientName?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+      (report.patientId?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+      (report.id?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false);
     const matchesType = filterType === 'all' || report.scanType === filterType;
     const matchesRisk = filterRisk === 'all' || report.riskLevel === filterRisk;
     
     return matchesSearch && matchesType && matchesRisk;
   });
+  
+  // Sort reports based on selected criteria
+  const sortedReports = [...filteredReports].sort((a, b) => {
+    switch (sortBy) {
+      case 'date':
+        return new Date(b.date).getTime() - new Date(a.date).getTime();
+      case 'patient':
+        return a.patientName.localeCompare(b.patientName);
+      case 'risk': {
+        const riskOrder = { high: 0, medium: 1, low: 2 };
+        return riskOrder[a.riskLevel] - riskOrder[b.riskLevel];
+      }
+      case 'type':
+    return a.scanType.localeCompare(b.scanType);
+      default:
+        return 0;
+    }
+  });
+  
+  const handleDownloadReport = async (report: Report) => {
+    setDownloadingReports(prev => new Set(prev.add(report.id)));
+    
+    try {
+      const success = await downloadReportPdf(report);
+      if (!success) {
+        throw new Error('Failed to download report');
+      }
+    } catch (error) {
+      console.error('Error downloading report:', error);
+      // You could show a toast notification here
+    } finally {
+      setDownloadingReports(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(report.id);
+        return newSet;
+      });
+    }
+  };
 
   return (
-    <div className="space-y-6 pt-6 px-4">
+    <div className="space-y-6">
       {/* Header */}
       <div>
         <h2 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">
@@ -219,14 +210,39 @@ const PastReports: React.FC = () => {
         </div>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 text-cyan-500 animate-spin" />
+          <span className="ml-3 text-slate-600 dark:text-slate-400">Loading reports...</span>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && !loading && (
+        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 text-red-600 dark:text-red-400">
+          <p className="flex items-center">
+            <AlertTriangle className="w-5 h-5 mr-2" />
+            {error}
+          </p>
+          <button 
+            className="mt-3 text-sm text-cyan-600 dark:text-cyan-400 hover:underline"
+            onClick={() => navigate('/dashboard/upload')}
+          >
+            Upload a new scan
+          </button>
+        </div>
+      )}
+
       {/* Summary Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Reports', value: reports.length, color: 'from-cyan-500 to-blue-600' },
-          { label: 'High Risk', value: reports.filter(r => r.riskLevel === 'high').length, color: 'from-red-500 to-pink-600' },
-          { label: 'Medium Risk', value: reports.filter(r => r.riskLevel === 'medium').length, color: 'from-yellow-500 to-orange-600' },
-          { label: 'Low Risk', value: reports.filter(r => r.riskLevel === 'low').length, color: 'from-green-500 to-emerald-600' }
-        ].map((stat, index) => (
+      {!loading && !error && (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[
+            { label: 'Total Reports', value: reports.length, color: 'from-cyan-500 to-blue-600' },
+            { label: 'High Risk', value: reports.filter(r => r.riskLevel === 'high').length, color: 'from-red-500 to-pink-600' },
+            { label: 'Medium Risk', value: reports.filter(r => r.riskLevel === 'medium').length, color: 'from-yellow-500 to-orange-600' },
+            { label: 'Low Risk', value: reports.filter(r => r.riskLevel === 'low').length, color: 'from-green-500 to-emerald-600' }
+          ].map((stat, index) => (
           <motion.div
             key={index}
             className="p-4 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm"
@@ -250,38 +266,40 @@ const PastReports: React.FC = () => {
           </motion.div>
         ))}
       </div>
+      )}
 
       {/* Reports Table */}
-      <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-50 dark:bg-slate-700">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Patient
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Scan Type
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Risk Level
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Anomalies
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Status
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
-              {filteredReports.map((report, index) => (
+      {!loading && !error && (
+        <div className="bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50 dark:bg-slate-700">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Patient
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Scan Type
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Date
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Risk Level
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Anomalies
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 dark:divide-slate-700">
+                {sortedReports.map((report, index) => (
                 <motion.tr
                   key={report.id}
                   className="hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors duration-200"
@@ -291,13 +309,9 @@ const PastReports: React.FC = () => {
                 >
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-3">
-                      <div className="w-10 h-10 bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden">
-                        <img 
-                          src={report.thumbnail} 
-                          alt="Scan thumbnail"
-                          className="w-full h-full object-cover"
-                        />
-                      </div>
+                    <div className="w-10 h-10 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-lg flex items-center justify-center">
+                      {getScanIcon(report.scanType)}
+                    </div>
                       <div>
                         <p className="font-medium text-slate-900 dark:text-white">
                           {report.patientName}
@@ -321,7 +335,7 @@ const PastReports: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-2 text-slate-600 dark:text-slate-400">
                       <Calendar className="w-4 h-4" />
-                      <span>{report.date}</span>
+                      <span>{new Date(report.date).toLocaleDateString()}</span>
                     </div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -332,7 +346,7 @@ const PastReports: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="font-medium text-slate-900 dark:text-white">
-                      {report.anomaliesCount}
+                      {report.anomaliesCount || 0}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
@@ -342,23 +356,36 @@ const PastReports: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center space-x-2">
-                      <button className="p-2 text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors duration-200">
+                      <button 
+                        className="p-2 text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 transition-colors duration-200"
+                        onClick={() => navigate(`/dashboard/results/${report.id}`)}
+                      >
                         <Eye className="w-4 h-4" />
                       </button>
-                      <button className="p-2 text-slate-400 hover:text-green-600 dark:hover:text-green-400 transition-colors duration-200">
-                        <Download className="w-4 h-4" />
+                      <button 
+                        className="p-2 text-slate-400 hover:text-green-600 dark:hover:text-green-400 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => handleDownloadReport(report)}
+                        disabled={downloadingReports.has(report.id)}
+                        title="Download PDF Report"
+                      >
+                        {downloadingReports.has(report.id) ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <Download className="w-4 h-4" />
+                        )}
                       </button>
                     </div>
                   </td>
                 </motion.tr>
-              ))}
+                ))}
             </tbody>
           </table>
         </div>
       </div>
+      )}
 
       {/* Empty State */}
-      {filteredReports.length === 0 && (
+      {!loading && !error && sortedReports.length === 0 && (
         <motion.div
           className="text-center py-12"
           initial={{ opacity: 0, y: 20 }}

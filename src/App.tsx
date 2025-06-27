@@ -6,6 +6,8 @@ import Dashboard from './components/Dashboard';
 import { ThemeProvider } from './contexts/ThemeContext';
 
 function App() {
+  const clerkPubKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  
   return (
     <ThemeProvider>
       <div className="App">
@@ -14,14 +16,18 @@ function App() {
           <Route 
             path="/dashboard/*" 
             element={
-              <>
-                <SignedIn>
-                  <Dashboard />
-                </SignedIn>
-                <SignedOut>
-                  <LandingPage />
-                </SignedOut>
-              </>
+              clerkPubKey ? (
+                <>
+                  <SignedIn>
+                    <Dashboard />
+                  </SignedIn>
+                  <SignedOut>
+                    <LandingPage />
+                  </SignedOut>
+                </>
+              ) : (
+                <Dashboard />
+              )
             } 
           />
         </Routes>

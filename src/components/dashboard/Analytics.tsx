@@ -1,78 +1,253 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { 
-  BarChart3, 
   TrendingUp, 
   Activity, 
-  Users, 
-  Brain,
-  Heart,
-  Calendar,
   Download,
-  Filter,
-  ChevronDown
+  ChevronDown,
+  Loader2,
+  BarChart3,
+  FileText,
+  Users,
+  AlertCircle
 } from 'lucide-react';
+import { getAnalyticsData } from '../../services/analyticsService';
+import { getAllReports } from '../../services/reportService';
+
+interface StatCard {
+  title: string;
+  value: string;
+  change: string;
+  trend: 'up' | 'down' | 'neutral';
+  color: string;
+}
+
+interface ScanTypeData {
+  type: string;
+  count: number;
+  percentage: number;
+  color: string;
+}
+
+interface TimeSeriesData {
+  day: string;
+  scans: number;
+  anomalies: number;
+}
 
 const Analytics: React.FC = () => {
   const [timeRange, setTimeRange] = useState('7d');
-  const [scanType, setScanType] = useState('all');
+  const [stats, setStats] = useState<StatCard[]>([]);
+  const [scanTypeData, setScanTypeData] = useState<ScanTypeData[]>([]);
+  const [weeklyData, setWeeklyData] = useState<TimeSeriesData[]>([]);
+  const [recentActivity, setRecentActivity] = useState<Array<{
+    action: string;
+    patient: string;
+    time: string;
+    status: string;
+    anomalies: number;
+  }>>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const stats = [
-    {
-      title: 'Total Scans',
-      value: '1,247',
-      change: '+12.5%',
-      trend: 'up',
-      icon: Activity,
-      color: 'from-cyan-500 to-blue-600'
-    },
-    {
-      title: 'Anomalies Detected',
-      value: '89',
-      change: '+8.2%',
-      trend: 'up',
-      icon: Brain,
-      color: 'from-red-500 to-pink-600'
-    },
-    {
-      title: 'Patients Analyzed',
-      value: '456',
-      change: '+15.3%',
-      trend: 'up',
-      icon: Users,
-      color: 'from-green-500 to-emerald-600'
-    },
-    {
-      title: 'Avg Analysis Time',
-      value: '8.3s',
-      change: '-2.1s',
-      trend: 'down',
-      icon: Heart,
-      color: 'from-purple-500 to-indigo-600'
+  // Icon mapping for stats
+  const getStatIcon = (title: string) => {
+    switch (title) {
+      case 'Total Scans':
+        return BarChart3;
+      case 'Reports Generated':
+        return FileText;
+      case 'Active Patients':
+        return Users;
+      case 'Anomalies Detected':
+        return AlertCircle;
+      default:
+        return Activity;
     }
-  ];
+  };
 
-  const scanTypeData = [
-    { type: 'Brain MRI', count: 487, percentage: 39, color: 'bg-purple-500' },
-    { type: 'Cardiac CT', count: 312, percentage: 25, color: 'bg-red-500' },
-    { type: 'Lung CT', count: 298, percentage: 24, color: 'bg-cyan-500' },
-    { type: 'Liver MRI', count: 150, percentage: 12, color: 'bg-green-500' }
-  ];
 
-  const weeklyData = [
-    { day: 'Mon', scans: 45, anomalies: 3 },
-    { day: 'Tue', scans: 52, anomalies: 7 },
-    { day: 'Wed', scans: 38, anomalies: 2 },
-    { day: 'Thu', scans: 61, anomalies: 9 },
-    { day: 'Fri', scans: 55, anomalies: 4 },
-    { day: 'Sat', scans: 28, anomalies: 1 },
-    { day: 'Sun', scans: 33, anomalies: 2 }
-  ];
 
-  const maxScans = Math.max(...weeklyData.map(d => d.scans));
+  useEffect(() => {
+    const fetchAnalyticsData = async () => {
+      try {
+        setLoading(true);
+        setError(null);
+        
+        const data = await getAnalyticsData(timeRange);
+        
+        if (data) {
+          setStats(data.stats);
+          setScanTypeData(data.scanTypeDistribution);
+          setWeeklyData(data.timeSeriesData);
+        } else {
+          // Set default data if no data returned
+          setStats([
+            {
+              title: 'Total Scans',
+              value: '0',
+              change: '+0.0%',
+              trend: 'neutral',
+              color: 'from-cyan-500 to-blue-600'
+            },
+            {
+              title: 'Reports Generated',
+              value: '0',
+              change: '+0.0%',
+              trend: 'neutral',
+              color: 'from-indigo-500 to-purple-600'
+            },
+            {
+              title: 'Active Patients',
+              value: '0',
+              change: '+0.0%',
+              trend: 'neutral',
+              color: 'from-green-500 to-emerald-600'
+            },
+            {
+              title: 'Anomalies Detected',
+              value: '0',
+              change: '+0.0%',
+              trend: 'neutral',
+              color: 'from-orange-500 to-red-600'
+            }
+          ]);
+          setScanTypeData([
+            { type: 'Brain MRI', count: 0, percentage: 0, color: 'bg-purple-500' },
+            { type: 'Cardiac CT', count: 0, percentage: 0, color: 'bg-red-500' },
+            { type: 'Lung CT', count: 0, percentage: 0, color: 'bg-cyan-500' },
+            { type: 'Liver MRI', count: 0, percentage: 0, color: 'bg-green-500' }
+          ]);
+          setWeeklyData(Array.from({ length: 7 }, (_, i) => {
+            const date = new Date();
+            date.setDate(date.getDate() - (6 - i));
+            return {
+              day: date.toLocaleDateString('en-US', { weekday: 'short' }).slice(0, 3),
+              scans: 0,
+              anomalies: 0
+            };
+          }));
+        }
+        
+        // Get recent activity from reports (with fallback for API errors)
+        try {
+          const reports = await getAllReports();
+          const sortedReports = reports
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            .slice(0, 4)
+            .map(report => ({
+              action: `${report.scanType} scan ${report.status === 'completed' ? 'completed' : 'processed'}`,
+              patient: `Patient #${report.patientId}`,
+              time: getRelativeTime(new Date(report.date)),
+              status: report.status,
+              anomalies: report.anomaliesCount || 0
+            }));
+          
+          setRecentActivity(sortedReports);
+        } catch (reportError) {
+          console.warn('Could not fetch reports for recent activity:', reportError);
+          setRecentActivity([]);
+        }
+      } catch (err) {
+        console.error('Error fetching analytics data:', err);
+        setError('Unable to load analytics data. Displaying demo data.');
+        
+        // Set demo data on error
+        setStats([
+          {
+            title: 'Total Scans',
+            value: '156',
+            change: '+12.5%',
+            trend: 'up',
+            color: 'from-cyan-500 to-blue-600'
+          },
+          {
+            title: 'Reports Generated',
+            value: '142',
+            change: '+8.2%',
+            trend: 'up',
+            color: 'from-indigo-500 to-purple-600'
+          },
+          {
+            title: 'Active Patients',
+            value: '89',
+            change: '+3.1%',
+            trend: 'up',
+            color: 'from-green-500 to-emerald-600'
+          },
+          {
+            title: 'Anomalies Detected',
+            value: '23',
+            change: '-5.4%',
+            trend: 'down',
+            color: 'from-orange-500 to-red-600'
+          }
+        ]);
+        
+        setScanTypeData([
+          { type: 'Brain MRI', count: 45, percentage: 35, color: 'bg-purple-500' },
+          { type: 'Cardiac CT', count: 38, percentage: 30, color: 'bg-red-500' },
+          { type: 'Lung CT', count: 32, percentage: 25, color: 'bg-cyan-500' },
+          { type: 'Liver MRI', count: 13, percentage: 10, color: 'bg-green-500' }
+        ]);
+        
+        setWeeklyData([
+          { day: 'Mon', scans: 12, anomalies: 2 },
+          { day: 'Tue', scans: 18, anomalies: 3 },
+          { day: 'Wed', scans: 15, anomalies: 1 },
+          { day: 'Thu', scans: 22, anomalies: 4 },
+          { day: 'Fri', scans: 19, anomalies: 2 },
+          { day: 'Sat', scans: 8, anomalies: 1 },
+          { day: 'Sun', scans: 6, anomalies: 0 }
+        ]);
+        
+        setRecentActivity([
+          {
+            action: 'Brain MRI scan completed',
+            patient: 'Patient #1234',
+            time: '15 minutes ago',
+            status: 'completed',
+            anomalies: 1
+          },
+          {
+            action: 'Lung CT scan processed',
+            patient: 'Patient #1235',
+            time: '1 hour ago',
+            status: 'processed',
+            anomalies: 0
+          }
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAnalyticsData();
+  }, [timeRange]);
+
+  // Helper function to get relative time
+  const getRelativeTime = (date: Date) => {
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffMins = Math.round(diffMs / 60000);
+    
+    if (diffMins < 60) {
+      return `${diffMins} minute${diffMins !== 1 ? 's' : ''} ago`;
+    }
+    
+    const diffHours = Math.floor(diffMins / 60);
+    if (diffHours < 24) {
+      return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+    }
+    
+    const diffDays = Math.floor(diffHours / 24);
+    return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+  };
+
+  const maxScans = weeklyData.length > 0 ? Math.max(...weeklyData.map(d => d.scans)) : 0;
 
   return (
-    <div className="space-y-6 pt-6 px-4">
+    <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -104,9 +279,28 @@ const Analytics: React.FC = () => {
         </div>
       </div>
 
+      {/* Loading State */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 text-cyan-500 animate-spin" />
+          <span className="ml-3 text-slate-600 dark:text-slate-400">Loading analytics data...</span>
+        </div>
+      )}
+
+      {/* Error State */}
+      {error && !loading && (
+        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4 text-yellow-600 dark:text-yellow-400">
+          <p className="flex items-center">
+            <AlertCircle className="w-5 h-5 mr-2" />
+            {error}
+          </p>
+        </div>
+      )}
+
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        {stats.map((stat, index) => (
+      {!loading && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {stats.map((stat, index) => (
           <motion.div
             key={index}
             className="p-6 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm"
@@ -116,10 +310,12 @@ const Analytics: React.FC = () => {
           >
             <div className="flex items-center justify-between mb-4">
               <div className={`w-12 h-12 bg-gradient-to-r ${stat.color} rounded-lg flex items-center justify-center`}>
-                <stat.icon className="w-6 h-6 text-white" />
+                {React.createElement(getStatIcon(stat.title), { className: "w-6 h-6 text-white" })}
               </div>
               <div className={`flex items-center text-sm font-medium ${
-                stat.trend === 'up' ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                stat.trend === 'up' ? 'text-green-600 dark:text-green-400' : 
+                stat.trend === 'down' ? 'text-red-600 dark:text-red-400' : 
+                'text-slate-600 dark:text-slate-400'
               }`}>
                 <TrendingUp className={`w-4 h-4 mr-1 ${stat.trend === 'down' ? 'rotate-180' : ''}`} />
                 {stat.change}
@@ -136,16 +332,18 @@ const Analytics: React.FC = () => {
           </motion.div>
         ))}
       </div>
+      )}
 
       {/* Charts Grid */}
-      <div className="grid lg:grid-cols-2 gap-8">
-        {/* Weekly Activity Chart */}
-        <motion.div
-          className="p-6 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm"
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: 0.3 }}
-        >
+      {!loading && (
+        <div className="grid lg:grid-cols-2 gap-8">
+          {/* Weekly Activity Chart */}
+          <motion.div
+            className="p-6 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm"
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.3 }}
+          >
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
               Weekly Activity
@@ -173,7 +371,7 @@ const Analytics: React.FC = () => {
                     <motion.div
                       className="h-full bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full"
                       initial={{ width: 0 }}
-                      animate={{ width: `${(day.scans / maxScans) * 100}%` }}
+                      animate={{ width: maxScans > 0 ? `${(day.scans / maxScans) * 100}%` : '0%' }}
                       transition={{ delay: index * 0.1, duration: 0.8 }}
                     />
                     <div className="absolute inset-0 flex items-center justify-center text-xs font-medium text-white">
@@ -233,14 +431,16 @@ const Analytics: React.FC = () => {
           </div>
         </motion.div>
       </div>
+      )}
 
       {/* Recent Activity */}
-      <motion.div
-        className="p-6 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm"
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.5 }}
-      >
+      {!loading && (
+        <motion.div
+          className="p-6 bg-white dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 shadow-sm"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
+        >
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
             Recent Activity
@@ -251,36 +451,7 @@ const Analytics: React.FC = () => {
         </div>
 
         <div className="space-y-4">
-          {[
-            {
-              action: 'Brain MRI scan completed',
-              patient: 'Patient #PAT-2024-001',
-              time: '2 minutes ago',
-              status: 'completed',
-              anomalies: 2
-            },
-            {
-              action: 'Cardiac CT analysis finished',
-              patient: 'Patient #PAT-2024-002',
-              time: '15 minutes ago',
-              status: 'completed',
-              anomalies: 0
-            },
-            {
-              action: 'Lung CT scan uploaded',
-              patient: 'Patient #PAT-2024-003',
-              time: '1 hour ago',
-              status: 'processing',
-              anomalies: null
-            },
-            {
-              action: 'Liver MRI report generated',
-              patient: 'Patient #PAT-2024-004',
-              time: '2 hours ago',
-              status: 'completed',
-              anomalies: 1
-            }
-          ].map((activity, index) => (
+          {recentActivity.length > 0 ? recentActivity.map((activity, index) => (
             <motion.div
               key={index}
               className="flex items-center justify-between p-4 bg-slate-50 dark:bg-slate-700/50 rounded-lg"
@@ -325,9 +496,14 @@ const Analytics: React.FC = () => {
                 </p>
               </div>
             </motion.div>
-          ))}
+          )) : (
+            <div className="text-center py-6 text-slate-500 dark:text-slate-400">
+              No recent activity found
+            </div>
+          )}
         </div>
       </motion.div>
+      )}
     </div>
   );
 };
