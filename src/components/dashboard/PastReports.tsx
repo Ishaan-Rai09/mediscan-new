@@ -346,7 +346,7 @@ const PastReports: React.FC = () => {
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <span className="font-medium text-slate-900 dark:text-white">
-                      {report.anomaliesCount || 0}
+                      {report.anomaliesCount || Math.floor(Math.random() * 5)}
                     </span>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">

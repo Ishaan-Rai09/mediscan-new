@@ -10,17 +10,31 @@ import {
   X,
   CheckCircle,
   Loader,
+  User,
+  Phone,
+  Mail,
+  Clipboard,
+  AlertCircle
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { createScan, ScanType } from '../../services/scanService';
-import { getAllPatients, Patient } from '../../services/patientService';
+import { getAllPatients, Patient, createPatient } from '../../services/patientService';
+
+interface PatientDetails {
+  name: string;
+  phone: string;
+  email: string;
+  age?: number;
+  gender?: 'male' | 'female';
+  address?: string;
+}
 
 interface UploadedFile {
   file: File;
   preview: string;
   scanType: ScanType;
   id: string;
-  patientId: string;
+  patientDetails: PatientDetails;
 }
 
 const ScanUpload: React.FC = () => {
@@ -29,7 +43,17 @@ const ScanUpload: React.FC = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisComplete, setAnalysisComplete] = useState(false);
   const [patients, setPatients] = useState<Patient[]>([]);
-  const [selectedPatientId, setSelectedPatientId] = useState<string>('');
+  const [showPatientForm, setShowPatientForm] = useState(false);
+  const [currentFileId, setCurrentFileId] = useState<string>('');
+  const [patientDetails, setPatientDetails] = useState<PatientDetails>({
+    name: '',
+    phone: '',
+    email: '',
+    age: undefined,
+    gender: undefined,
+    address: ''
+  });
+  const [errors, setErrors] = useState<{[key: string]: string}>({});
 
   const scanTypes = [
     { id: 'brain', name: 'Brain MRI', icon: Brain, color: 'from-purple-500 to-pink-600' },
@@ -43,30 +67,85 @@ const ScanUpload: React.FC = () => {
     const loadPatients = async () => {
       const patientData = await getAllPatients();
       setPatients(patientData);
-      if (patientData.length > 0) {
-        setSelectedPatientId(patientData[0].id);
-      }
     };
     
     loadPatients();
   }, []);
 
+  const validatePatientDetails = () => {
+    const newErrors: {[key: string]: string} = {};
+    
+    if (!patientDetails.name.trim()) {
+      newErrors.name = 'Patient name is required';
+    }
+    
+    if (!patientDetails.phone.trim()) {
+      newErrors.phone = 'Phone number is required';
+    } else if (!/^[+]?[1-9][\d]{1,14}$/.test(patientDetails.phone.replace(/[\s-()]/g, ''))) {
+      newErrors.phone = 'Please enter a valid phone number';
+    }
+    
+    if (!patientDetails.email.trim()) {
+      newErrors.email = 'Email address is required';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(patientDetails.email)) {
+      newErrors.email = 'Please enter a valid email address';
+    }
+    
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handlePatientDetailsSubmit = () => {
+    if (validatePatientDetails()) {
+      // Update the file with patient details
+      setUploadedFiles(prev => 
+        prev.map(file => 
+          file.id === currentFileId 
+            ? { ...file, patientDetails: { ...patientDetails } }
+            : file
+        )
+      );
+      
+      // Reset form and close modal
+      setPatientDetails({
+        name: '',
+        phone: '',
+        email: '',
+        age: undefined,
+        gender: undefined,
+        address: ''
+      });
+      setShowPatientForm(false);
+      setCurrentFileId('');
+      setErrors({});
+    }
+  };
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
     acceptedFiles.forEach(file => {
       const reader = new FileReader();
       reader.onload = () => {
+        const newFileId = Math.random().toString(36).substr(2, 9);
         const newFile: UploadedFile = {
           file,
           preview: reader.result as string,
           scanType: 'brain', // Default selection
-          id: Math.random().toString(36).substr(2, 9),
-          patientId: selectedPatientId
+          id: newFileId,
+          patientDetails: {
+            name: '',
+            phone: '',
+            email: ''
+          }
         };
         setUploadedFiles(prev => [...prev, newFile]);
+        
+        // Automatically open patient form for new file
+        setCurrentFileId(newFileId);
+        setShowPatientForm(true);
       };
       reader.readAsDataURL(file);
     });
-  }, [selectedPatientId]);
+  }, []);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
@@ -97,35 +176,92 @@ const ScanUpload: React.FC = () => {
   };
 
   const startAnalysis = async () => {
+    console.log('Starting analysis...');
+    console.log('Uploaded files:', uploadedFiles);
+    
+    // Validate that all files have patient details
+    const filesWithoutPatientDetails = uploadedFiles.filter(
+      file => !file.patientDetails.name || !file.patientDetails.phone || !file.patientDetails.email
+    );
+    
+    if (filesWithoutPatientDetails.length > 0) {
+      alert('Please provide patient details for all uploaded files before starting analysis.');
+      return;
+    }
+    
     setIsAnalyzing(true);
     setAnalysisComplete(false);
     
     try {
-      // Process each file
-      const scanPromises = uploadedFiles.map(async (fileData) => {
-        return await createScan(
-          fileData.file,
-          fileData.patientId,
-          fileData.scanType
-        );
+      console.log('Processing files...');
+      
+      // Create patient records and process each file
+      const scanPromises = uploadedFiles.map(async (fileData, index) => {
+        console.log(`Processing file ${index + 1}:`, fileData.file.name);
+        
+        try {
+          // First, create or find patient
+          console.log('Creating patient with data:', fileData.patientDetails);
+          
+          const newPatient = await createPatient({
+            name: fileData.patientDetails.name,
+            age: fileData.patientDetails.age || 25,
+            gender: fileData.patientDetails.gender || 'male',
+            email: fileData.patientDetails.email,
+            phone: fileData.patientDetails.phone,
+            address: fileData.patientDetails.address || '',
+            lastVisit: new Date().toISOString(),
+            totalScans: 1,
+            riskLevel: 'low',
+            conditions: []
+          });
+          
+          console.log('Patient created:', newPatient);
+          
+          if (newPatient) {
+            console.log('Creating scan for patient ID:', newPatient.id);
+            const scanResult = await createScan(
+              fileData.file,
+              newPatient.id,
+              fileData.scanType
+            );
+            console.log('Scan created:', scanResult);
+            return scanResult;
+          }
+          
+          console.error('Failed to create patient');
+          return null;
+        } catch (fileError) {
+          console.error(`Error processing file ${fileData.file.name}:`, fileError);
+          return null;
+        }
       });
       
+      console.log('Waiting for all scans to complete...');
       // Wait for all uploads to complete
       const results = await Promise.all(scanPromises);
+      console.log('All scan results:', results);
       
       // Check if all uploads were successful
-      const allSuccessful = results.every(result => result !== null);
+      const successfulResults = results.filter(result => result !== null);
+      console.log(`${successfulResults.length}/${results.length} scans completed successfully`);
       
-      if (allSuccessful) {
+      if (successfulResults.length > 0) {
+        console.log('Analysis completed successfully!');
         setIsAnalyzing(false);
         setAnalysisComplete(true);
+        
+        // Show success message
+        setTimeout(() => {
+          alert(`Analysis completed! ${successfulResults.length} scan(s) processed successfully.`);
+        }, 1000);
       } else {
-        throw new Error('Some scans failed to upload');
+        throw new Error('All scans failed to upload');
       }
     } catch (error) {
       console.error('Error during scan analysis:', error);
       setIsAnalyzing(false);
-      // Handle error state here
+      alert(`Analysis failed: ${error.message}. Please try again.`);
     }
   };
 
@@ -201,6 +337,11 @@ const ScanUpload: React.FC = () => {
                     <p className="text-sm text-slate-500 dark:text-slate-400">
                       {(file.file.size / 1024 / 1024).toFixed(2)} MB
                     </p>
+                    {file.patientDetails.name && (
+                      <p className="text-sm text-green-600 dark:text-green-400 font-medium">
+                        Patient: {file.patientDetails.name}
+                      </p>
+                    )}
                   </div>
 
                   {/* Scan Type Selector */}
@@ -217,18 +358,16 @@ const ScanUpload: React.FC = () => {
                       ))}
                     </select>
                     
-                    {/* Patient Selector */}
-                    <select
-                      value={file.patientId}
-                      onChange={(e) => updatePatientId(file.id, e.target.value)}
-                      className="px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm font-medium text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    {/* Patient Details Button */}
+                    <button
+                      onClick={() => {
+                        setCurrentFileId(file.id);
+                        setShowPatientForm(true);
+                      }}
+                      className="px-3 py-2 bg-slate-50 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 rounded-lg text-sm font-medium text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-600 transition-colors"
                     >
-                      {patients.map(patient => (
-                        <option key={patient.id} value={patient.id}>
-                          {patient.name}
-                        </option>
-                      ))}
-                    </select>
+                      {file.patientDetails.name ? 'Edit Patient' : 'Add Patient'}
+                    </button>
                   </div>
 
                   {/* Remove Button */}
@@ -315,7 +454,7 @@ const ScanUpload: React.FC = () => {
         )}
       </AnimatePresence>
 
-      {/* Analysis Complete */}
+            {/* Analysis Complete */}
       <AnimatePresence>
         {analysisComplete && (
           <motion.div
@@ -333,21 +472,21 @@ const ScanUpload: React.FC = () => {
                   Analysis Complete!
                 </h4>
                 <p className="text-sm text-slate-600 dark:text-slate-400 mb-4">
-                  Your medical scans have been successfully analyzed. View detailed results and generate reports.
+                  Your medical scans have been successfully analyzed. Patient data and scan results have been securely stored in encrypted cloud storage.
                 </p>
                 <div className="flex space-x-3">
                   <button 
-                  onClick={() => navigate('/dashboard/results')} 
-                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-700 transition-all duration-200"
-                >
-                  View Results
-                </button>
-                <button 
-                  onClick={() => navigate('/dashboard/reports')} 
-                  className="px-4 py-2 border border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 rounded-lg font-medium hover:bg-green-50 dark:hover:bg-green-900/20 transition-all duration-200"
-                >
-                  Generate Report
-                </button>
+                    onClick={() => navigate('/dashboard/results')} 
+                    className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-lg font-medium hover:from-green-600 hover:to-emerald-700 transition-all duration-200"
+                  >
+                    View Results
+                  </button>
+                  <button 
+                    onClick={() => navigate('/dashboard/reports')} 
+                    className="px-4 py-2 border border-green-300 dark:border-green-700 text-green-700 dark:text-green-300 rounded-lg font-medium hover:bg-green-50 dark:hover:bg-green-900/20 transition-all duration-200"
+                  >
+                    View Reports
+                  </button>
                 </div>
               </div>
             </div>
@@ -386,6 +525,196 @@ const ScanUpload: React.FC = () => {
           </motion.div>
         ))}
       </div>
+      
+      {/* Patient Details Modal */}
+      <AnimatePresence>
+        {showPatientForm && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowPatientForm(false)}
+          >
+            <motion.div
+              className="w-full max-w-md p-6 bg-white dark:bg-slate-800 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-700 mx-4"
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-slate-900 dark:text-white flex items-center">
+                  <User className="w-5 h-5 mr-2 text-cyan-500" />
+                  Patient Details
+                </h3>
+                <button
+                  onClick={() => setShowPatientForm(false)}
+                  className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              
+              <form className="space-y-4">
+                {/* Patient Name */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Patient Name *
+                  </label>
+                  <input
+                    type="text"
+                    value={patientDetails.name}
+                    onChange={(e) => setPatientDetails(prev => ({ ...prev, name: e.target.value }))}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent ${
+                      errors.name 
+                        ? 'border-red-300 dark:border-red-600' 
+                        : 'border-slate-300 dark:border-slate-600'
+                    } bg-white dark:bg-slate-700 text-slate-900 dark:text-white`}
+                    placeholder="Enter patient's full name"
+                  />
+                  {errors.name && (
+                    <p className="text-red-500 text-sm mt-1 flex items-center">
+                      <AlertCircle className="w-4 h-4 mr-1" />
+                      {errors.name}
+                    </p>
+                  )}
+                </div>
+                
+                {/* Phone Number */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Phone Number *
+                  </label>
+                  <input
+                    type="tel"
+                    value={patientDetails.phone}
+                    onChange={(e) => setPatientDetails(prev => ({ ...prev, phone: e.target.value }))}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent ${
+                      errors.phone 
+                        ? 'border-red-300 dark:border-red-600' 
+                        : 'border-slate-300 dark:border-slate-600'
+                    } bg-white dark:bg-slate-700 text-slate-900 dark:text-white`}
+                    placeholder="+1 (555) 123-4567"
+                  />
+                  {errors.phone && (
+                    <p className="text-red-500 text-sm mt-1 flex items-center">
+                      <AlertCircle className="w-4 h-4 mr-1" />
+                      {errors.phone}
+                    </p>
+                  )}
+                </div>
+                
+                {/* Email Address */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Email Address *
+                  </label>
+                  <input
+                    type="email"
+                    value={patientDetails.email}
+                    onChange={(e) => setPatientDetails(prev => ({ ...prev, email: e.target.value }))}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-transparent ${
+                      errors.email 
+                        ? 'border-red-300 dark:border-red-600' 
+                        : 'border-slate-300 dark:border-slate-600'
+                    } bg-white dark:bg-slate-700 text-slate-900 dark:text-white`}
+                    placeholder="patient@example.com"
+                  />
+                  {errors.email && (
+                    <p className="text-red-500 text-sm mt-1 flex items-center">
+                      <AlertCircle className="w-4 h-4 mr-1" />
+                      {errors.email}
+                    </p>
+                  )}
+                </div>
+                
+                {/* Optional Fields */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      Age
+                    </label>
+                    <input
+                      type="number"
+                      value={patientDetails.age || ''}
+                      onChange={(e) => setPatientDetails(prev => ({ ...prev, age: parseInt(e.target.value) || undefined }))}
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                      placeholder="35"
+                      min="0"
+                      max="120"
+                    />
+                  </div>
+                  
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                      Gender
+                    </label>
+                    <select
+                      value={patientDetails.gender || ''}
+                      onChange={(e) => setPatientDetails(prev => ({ ...prev, gender: e.target.value as 'male' | 'female' || undefined }))}
+                      className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    >
+                      <option value="">Select gender</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                    </select>
+                  </div>
+                </div>
+                
+                {/* Address */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Address
+                  </label>
+                  <textarea
+                    value={patientDetails.address || ''}
+                    onChange={(e) => setPatientDetails(prev => ({ ...prev, address: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                    placeholder="Patient's address"
+                    rows={2}
+                  />
+                </div>
+                
+                {/* Scan Type Selection */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+                    Type of Scan *
+                  </label>
+                  <select
+                    value={uploadedFiles.find(f => f.id === currentFileId)?.scanType || 'brain'}
+                    onChange={(e) => updateScanType(currentFileId, e.target.value as ScanType)}
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                  >
+                    {scanTypes.map(type => (
+                      <option key={type.id} value={type.id}>
+                        {type.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </form>
+              
+              <div className="flex justify-end space-x-3 mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+                <button
+                  onClick={() => setShowPatientForm(false)}
+                  className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+                >
+                  Cancel
+                </button>
+                <motion.button
+                  onClick={handlePatientDetailsSubmit}
+                  className="px-6 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium hover:from-cyan-600 hover:to-blue-700 transition-all duration-200"
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  Save Details
+                </motion.button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

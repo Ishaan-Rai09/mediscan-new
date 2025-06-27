@@ -33,15 +33,17 @@ export interface ScanResult {
 }
 
 /**
- * Upload a scan image to IPFS
+ * Upload a scan image to IPFS with encryption
  */
 export const uploadScanImage = async (file: File, metadata: Record<string, string | number | boolean>) => {
   try {
-    // Upload the image file to IPFS
+    // Upload the image file to IPFS with encryption
     const result = await uploadFileToPinata(file, {
       patientId: metadata.patientId,
       scanType: metadata.scanType,
       scanDate: new Date().toISOString(),
+      encrypted: true,
+      fileType: 'medical_scan',
       ...metadata
     });
     
@@ -49,6 +51,7 @@ export const uploadScanImage = async (file: File, metadata: Record<string, strin
       throw new Error('Failed to upload scan image to IPFS');
     }
     
+    console.log('Scan image uploaded to IPFS:', result.ipfsHash);
     return result;
   } catch (error) {
     console.error('Error uploading scan image:', error);

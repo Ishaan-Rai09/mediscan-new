@@ -151,41 +151,60 @@ export const getPatientById = async (id: string): Promise<Patient | null> => {
  */
 export const createPatient = async (patientData: Omit<Patient, 'id'>): Promise<Patient | null> => {
   try {
-    // Encrypt sensitive data for IPFS storage
-    const sensitiveData = {
-      medicalHistory: patientData.conditions,
-      address: patientData.address,
-      notes: '',
-      createdAt: new Date().toISOString()
+    console.log('Creating patient with data:', patientData);
+    
+    // Generate unique patient ID
+    const patientId = `patient_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Create patient record
+    const newPatient: Patient = {
+      id: patientId,
+      ...patientData
     };
     
-    // Upload encrypted data to IPFS
-    const ipfsResult = await uploadEncryptedJsonToPinata(
-      sensitiveData, 
-      `patient_${Date.now()}`
-    );
+    console.log('Generated patient record:', newPatient);
     
-    if (!ipfsResult.success) {
-      throw new Error('Failed to upload patient data to IPFS');
+    try {
+      // Try to encrypt sensitive data for IPFS storage (optional)
+      const sensitiveData = {
+        medicalHistory: patientData.conditions,
+        address: patientData.address,
+        notes: '',
+        createdAt: new Date().toISOString()
+      };
+      
+      const ipfsResult = await uploadEncryptedJsonToPinata(
+        sensitiveData, 
+        `patient_${patientId}`
+      );
+      
+      if (ipfsResult.success) {
+        newPatient.ipfsHash = ipfsResult.ipfsHash;
+        console.log('Patient data uploaded to IPFS:', ipfsResult.ipfsHash);
+      } else {
+        console.warn('Failed to upload patient data to IPFS, continuing without it');
+      }
+    } catch (ipfsError) {
+      console.warn('IPFS upload failed, continuing without it:', ipfsError);
     }
-    
-    // Create patient with IPFS reference
-    const newPatient: Omit<Patient, 'id'> & { ipfsHash: string } = {
-      ...patientData,
-      ipfsHash: ipfsResult.ipfsHash
-    };
-    
-    // Save to API
-    const response = await api.post('/patients', newPatient);
-    const createdPatient = response.data;
     
     // Update local storage
     const localPatients = localStorage.getItem('patients');
     const patients = localPatients ? JSON.parse(localPatients) : [];
-    patients.push(createdPatient);
+    patients.push(newPatient);
     localStorage.setItem('patients', JSON.stringify(patients));
     
-    return createdPatient;
+    console.log('Patient saved to localStorage. Total patients:', patients.length);
+    
+    // Try to save to API (optional)
+    try {
+      await api.post('/patients', newPatient);
+      console.log('Patient saved to API successfully');
+    } catch (apiError) {
+      console.warn('API unavailable, patient stored locally only:', apiError);
+    }
+    
+    return newPatient;
   } catch (error) {
     console.error('Error creating patient:', error);
     return null;

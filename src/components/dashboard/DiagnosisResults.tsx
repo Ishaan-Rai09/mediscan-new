@@ -16,7 +16,7 @@ import {
   Zap,
   FileText
 } from 'lucide-react';
-import { getAllScans, getScanById, ScanResult } from '../../services/scanService';
+import { getAllScans, getScanById, ScanResult, updateScanWithAnalysis } from '../../services/scanService';
 import { createReportFromScan } from '../../services/reportService';
 
 // Use the ScanResult interface from scanService

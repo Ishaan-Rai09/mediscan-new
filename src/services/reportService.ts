@@ -355,45 +355,32 @@ export const getReportPdfUrl = (ipfsHash: string): string => {
  */
 export const downloadReportPdf = async (report: Report): Promise<boolean> => {
   try {
-    if (!report.pdfIpfsHash) {
-      // Generate PDF if it doesn't exist
-      const pdfBlob = await generateReportPdf(report);
-      if (!pdfBlob) {
-        throw new Error('Failed to generate PDF');
-      }
-      
-      // Download the generated PDF
-      const url = URL.createObjectURL(pdfBlob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `report_${report.patientName}_${report.scanType}_${new Date(report.date).toISOString().split('T')[0]}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(url);
-      
-      return true;
+    console.log('Downloading PDF for report:', report.id);
+    
+    // Always generate a fresh PDF to ensure it's available
+    const pdfBlob = await generateReportPdf(report);
+    if (!pdfBlob) {
+      throw new Error('Failed to generate PDF');
     }
     
-    // Download from IPFS
-    const response = await fetch(`https://gateway.pinata.cloud/ipfs/${report.pdfIpfsHash}`);
-    if (!response.ok) {
-      throw new Error('Failed to fetch PDF from IPFS');
-    }
-    
-    const blob = await response.blob();
-    const url = URL.createObjectURL(blob);
+    // Create download link
+    const url = URL.createObjectURL(pdfBlob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `report_${report.patientName}_${report.scanType}_${new Date(report.date).toISOString().split('T')[0]}.pdf`;
+    const fileName = `MediScan_Report_${report.patientName.replace(/\s+/g, '_')}_${report.scanType}_${new Date(report.date).toLocaleDateString().replace(/\//g, '-')}.pdf`;
+    link.download = fileName;
+    
+    // Trigger download
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
     
+    console.log('PDF downloaded successfully:', fileName);
     return true;
   } catch (error) {
     console.error('Error downloading PDF:', error);
+    alert('Failed to download PDF report. Please try again.');
     return false;
   }
 };

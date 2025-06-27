@@ -16,6 +16,9 @@ import {
 } from 'lucide-react';
 
 const SecuritySettings: React.FC = () => {
+  const [isAuthorized, setIsAuthorized] = useState(false);
+  const [enteredPassword, setEnteredPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
   const [showEncryptionKey, setShowEncryptionKey] = useState(false);
   const [twoFactorEnabled, setTwoFactorEnabled] = useState(true);
   const [encryptionEnabled, setEncryptionEnabled] = useState(true);
@@ -87,6 +90,82 @@ const SecuritySettings: React.FC = () => {
       status: 'success'
     }
   ];
+
+  // Function to check password
+  const checkPassword = () => {
+    if (enteredPassword === "1234") {
+      setIsAuthorized(true);
+      setPasswordError('');
+    } else {
+      setPasswordError('Incorrect password. Please try again.');
+    }
+  };
+
+  const handleKeyPress = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      checkPassword();
+    }
+  };
+
+  // If not authorized, show password prompt
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-blue-900 to-indigo-900">
+        <motion.div
+          className="w-full max-w-md p-8 bg-white/10 backdrop-blur-lg rounded-2xl border border-white/20 shadow-xl"
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6 }}
+        >
+          <div className="text-center mb-8">
+            <div className="w-16 h-16 bg-gradient-to-r from-cyan-500 to-blue-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Shield className="w-8 h-8 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">Admin Access Required</h2>
+            <p className="text-slate-300">Please enter the admin password to access security settings</p>
+          </div>
+          
+          <div className="space-y-4">
+            <div>
+              <input
+                type="password"
+                className="w-full px-4 py-3 bg-white/20 border border-white/30 rounded-lg text-white placeholder-slate-300 focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+                placeholder="Enter admin password"
+                value={enteredPassword}
+                onChange={(e) => setEnteredPassword(e.target.value)}
+                onKeyPress={handleKeyPress}
+              />
+              {passwordError && (
+                <motion.p
+                  className="text-red-300 text-sm mt-2 flex items-center"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                >
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  {passwordError}
+                </motion.p>
+              )}
+            </div>
+            
+            <motion.button
+              onClick={checkPassword}
+              className="w-full px-4 py-3 bg-gradient-to-r from-cyan-500 to-blue-600 text-white rounded-lg font-medium hover:from-cyan-600 hover:to-blue-700 transition-all duration-200"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              Access Admin Panel
+            </motion.button>
+          </div>
+          
+          <div className="mt-6 text-center">
+            <p className="text-slate-400 text-sm">
+              Hint: Password is "1234" for demo purposes
+            </p>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pt-6 px-4">
